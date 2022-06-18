@@ -1,0 +1,460 @@
+import re
+import textwrap
+import pyodbc
+import pyautogui as pag 
+from flask import Flask, render_template,request, url_for, redirect, session
+from datetime import timedelta 
+
+driver ='{ODBC Driver 17 for SQL Server}'
+server_name = 'cvds'
+database_name = 'Final1'
+server = '{server_name}.database.windows.net,1433'.format(server_name=server_name)
+username = 'CVDSadmin'
+password = 'Tr@ffic2021'   
+
+connection_string = textwrap.dedent('''
+    Driver={driver};
+    Server={server};
+    Database={database};
+    Uid={username};
+    Pwd={password};
+    Encrypt=yes;
+    TrustServerCertificate=no;
+    Connection Timeout=30;
+    '''.format(
+        driver=driver,
+        server=server,
+        database=database_name,
+        username=username,
+        password=password))
+cnxn: pyodbc.Connection = pyodbc.connect(connection_string)
+crsr: pyodbc.Cursor=cnxn.cursor()
+#select_sql="Select * from [Person]"
+#crsr.execute(select_sql)
+#data=crsr.fetchall()
+#print(crsr.fetchall())
+#insert_sql ="INSERT INTO [Person] (person_first_name,person_second_name,person_DateOfBirth,person_address,person_nationality,person_job) VALUES ('yahia','hossam','1999-08-12','sheraton','msr','teacher')"
+#crsr.execute(insert_sql)
+#crsr.commit()
+# cnxn.close()
+#driver= '{ODBC Driver 17 for SQL Server}'
+#connection_string=textwrap.dedent
+          
+app = Flask(__name__)
+app.secret_key="hello"
+app.permanent_session_lifetime = timedelta(minutes=3)
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0 
+reg = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*#?&_-+ ])[A-Za-z\d@$!#%*?&_-+]{8,18}$"
+
+@app.route('/')
+def home():
+    return render_template('home.html')
+@app.route('/readmore')
+def readmore():
+    return render_template('readmore.html')
+@app.route('/payment')
+def payment():
+    if "user"in session:
+        return render_template('payment.html')
+    else:
+       pag.alert(text="Please login in", title="Erorr")
+       return redirect(url_for("login"))
+
+@app.route('/violations')
+def violtaions():
+    if "user"in session:
+      crsr.execute("Select car_chassisnumber,car_enginenumber from [dbo].[car] where person_ssn=?",session['user'])
+      #crsr.execute("Select car_enginenumber from [dbo].[car] where person_ssn=?",session['user'])
+      dats=crsr.fetchall()
+      crsr.commit()
+      print (dats[0][0])
+      crsr.execute('select car_model ,car_violation_location , car_violation_date,violation_name , car_violation_price FROM [dbo].[car_violation] INNER JOIN [dbo].[car] on [dbo].[car_violation].car_violation_chassisnumber=[dbo].[car].car_chassisnumber INNER JOIN [dbo].[violation] on  [dbo].[car_violation].violation_ID=[dbo].[violation].violation_id  where [dbo].[car_violation].car_violation_chassisnumber=? and [dbo].[car_violation].car_violation_enginenumber=?',dats[0][0],dats[0][1])
+     # crsr.execute('Select * from[dbo].[car_violations] where car_enginenumber=?',Select_query1)
+      datas=crsr.fetchall()
+      # crsr.execute("Select car_model from [dbo].[car] where [dbo].[car_violation].car_violation_chassisnumber=? and [dbo].[car_violation].car_violation_enginenumber=?")
+      # datss=crsr.fetchall()
+      # crsr.commit()
+      crsr.execute('select SUM (car_violation_price) FROM [dbo].[car_violation] INNER JOIN [dbo].[car] on [dbo].[car_violation].car_violation_chassisnumber=[dbo].[car].car_chassisnumber INNER JOIN [dbo].[violation] on  [dbo].[car_violation].violation_ID=[dbo].[violation].violation_id  where [dbo].[car_violation].car_violation_chassisnumber=? and [dbo].[car_violation].car_violation_enginenumber=?',dats[0][0],dats[0][1])
+      datap=crsr.fetchall()
+      return render_template('violations.html',data=datas,datap=datap)
+    else:
+       pag.alert(text="Please login in", title="Erorr")
+       return redirect(url_for("login"))
+
+@app.route('/logoutadmin')
+def logoutadmin():
+    session['logged_in'] = False
+    session.clear()
+    return render_template("adminlogin.html")
+
+
+@app.route('/Gender')
+def Genders():
+      crsr.execute("SELECT COUNT([dbo].[car].person_ssn) from [dbo].[car] INNER JOIN [dbo].[car_violation] on [dbo].[car].car_chassisnumber = [dbo].[car_violation].car_violation_chassisnumber AND [dbo].[car].car_enginenumber = [dbo].[car_violation].car_violation_enginenumber,[dbo].[person] where [dbo].[car].person_ssn=[dbo].[person].person_ssn and [dbo].[person].gender='Male'")
+      datap=crsr.fetchall()
+      print(datap[0][0])
+      crsr.commit()
+      crsr.execute("SELECT COUNT([dbo].[car].person_ssn) from [dbo].[car] INNER JOIN [dbo].[car_violation] on [dbo].[car].car_chassisnumber = [dbo].[car_violation].car_violation_chassisnumber AND [dbo].[car].car_enginenumber = [dbo].[car_violation].car_violation_enginenumber,[dbo].[person] where [dbo].[car].person_ssn=[dbo].[person].person_ssn and [dbo].[person].gender='female'")
+      datapp=crsr.fetchall()
+      print(datapp[0][0])
+      crsr.commit()
+      return render_template('Gender.html',data=datap, datas=datapp)
+  
+@app.route('/Location')
+def Location():
+      crsr.execute("SELECT car_violation_location, COUNT (car_violation_location) FROM [dbo].[car_violation] GROUP BY car_violation_location")
+      dataloc=crsr.fetchall()
+      print(dataloc[0][0])
+      crsr.commit()
+      return render_template('location.html',datalo=dataloc)
+  
+@app.route('/violatio')
+def violatio():
+      crsr.execute("SELECT  COUNT (violation_ID)  FROM [dbo].[car_violation] where violation_ID = '5'")
+      datavio=crsr.fetchall()
+      print(datavio[0][0])
+      crsr.commit()
+      crsr.execute("SELECT COUNT (violation_ID) FROM [dbo].[car_violation] where violation_ID = '6'")
+      datavio1=crsr.fetchall()
+      print(datavio1[0][0])
+      crsr.commit()
+      crsr.execute("SELECT COUNT (violation_ID) FROM [dbo].[car_violation] where violation_ID = '7'")
+      datavio2=crsr.fetchall()
+      print(datavio2[0][0])
+      crsr.commit()
+      return render_template('violatio.html',datav=datavio,datav1=datavio1,datav2=datavio2)
+
+
+@app.route('/login',methods=["POST","GET"])
+def login():
+    if request.method == "POST":
+        try:
+            int (request.form["SSN"])
+        except ValueError:     
+            pag.alert(text="Enter your ID"  , title="Erorr")
+            return redirect(url_for("login"))
+        
+        loginssn = request.form["SSN"]
+        loginpass = request.form["pass"]
+        
+        # crsr.execute('Select * from [dbo].[Person] where PersonId=?',loginssn)
+        # REsnn=crsr.fetchall()
+        # crsr.commit()
+        # for row in REsnn:
+        #     if int(row[0])==1:
+        #         session.permanent=True
+        crsr.execute('Select count(userssn) from [dbo].[Users] where userssn=? AND password=?',loginssn,loginpass)        
+        ssncount=crsr.fetchall()
+        crsr.commit()
+        for row in ssncount:
+            if int(row[0])==1 :
+                session.permanent = True
+                session['logged_in'] = True
+                session["user"]=loginssn
+                print(loginssn)
+               # REsnn=crsr.fetchall()
+                #for row in REsnn:
+                 #   print(row[0])
+                return redirect(url_for("home"))
+            else:
+                if "user" in session:
+                    return redirect(url_for("home"))
+        pag.alert(text="Please Enter Valid Data", title="Erorr")
+        return  render_template('login.html') 
+    else:
+        
+        return render_template('login.html') 
+@app.route("/adminlogin",methods=["POST","GET"])
+def loginadmin():
+   if request.method == "POST":
+        try:
+            int (request.form["SSN"])
+        except ValueError:     
+            pag.alert(text="Enter your ID", title="Erorr")
+            return redirect(url_for("adminlogin"))
+        
+        loginssn = request.form["SSN"]
+        loginpass = request.form["pass"]
+        
+        # crsr.execute('Select * from [dbo].[Person] where PersonId=?',loginssn)
+        # REsnn=crsr.fetchall()
+        # crsr.commit()
+        # for row in REsnn:
+        #     if int(row[0])==1:
+        #         session.permanent=True
+        crsr.execute('Select count(AdminID) from [dbo].[Admin] where AdminID=? AND Password=?',loginssn,loginpass)        
+        ssncount=crsr.fetchall()
+        crsr.commit()
+        for row in ssncount:
+            if int(row[0])==1 :
+                session.permanent = True
+                session['logged_in'] = True
+                session["admin"]=loginssn
+                print(loginssn)
+               # REsnn=crsr.fetchall()
+                #for row in REsnn:
+                 #   print(row[0])
+                return redirect(url_for("admin"))
+            else:
+                if "user" in session:
+                    return redirect(url_for("admin"))
+        pag.alert(text="Please Enter Valid Data", title="Erorr")        
+        return render_template('adminlogin.html') 
+   else:
+        return render_template('adminlogin.html')          
+@app.route("/user")
+def user():
+    if "user" in session:
+        user= session["user"]
+        return f"<h1>{user}</h1>"
+    else:
+        return redirect(url_for("login"))
+@app.route('/logout')
+def logout():
+    session['logged_in'] = False
+    session.clear()
+    return render_template("home.html")
+
+@app.route("/VALI")
+def VALI():
+    reg="^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!-#%*?&]{6,20}$"
+    txt= request.form["pass"] 
+    pat = re.compile(reg)           
+    mat = re.search(pat, txt)
+    if mat:
+        print("Password is valid.")
+        return 1
+    else:
+        print("Password invalid !!")
+        return 0
+@app.route('/signup',methods=["POST","GET"])
+def signup():
+   if request.method == "POST":
+        try:
+            int (request.form["SSN"])
+        except ValueError:     
+            pag.alert(text="enter your id", title="erorr")
+            return redirect(url_for("signup"))
+        if VALI():
+            if request.form["pass"]==request.form["confirmpass"]:
+                userr = request.form["SSN"]
+                passwordd=request.form["pass"]
+                crsr.execute('Select count(person_ssn) from [dbo].[Person] where person_ssn=?',userr)
+                datas=crsr.fetchall()
+                crsr.commit()
+                for row1 in datas:
+                    if int(row1[0])==1:
+                        crsr.execute('Select count(userssn) from [dbo].[Users] where userssn=?',userr)
+                        datas=crsr.fetchall()
+                        crsr.commit()
+                        for row2 in datas:
+                            if int(row2[0])==1 :
+                                return redirect(url_for("login"))
+                            else:
+                                crsr.execute("INSERT INTO [Users] (userssn,password) VALUES (?,?)",userr,passwordd)
+                                crsr.commit()
+                                return redirect(url_for("login"))
+                    else:
+                        pag.alert(text="This SSN not found ", title="Erorr")
+                        return redirect(url_for("signup"))
+            else:
+                return redirect(url_for("signup"))
+        else:
+            pag.alert(text="Renter Password Please Your password must contain symboles'_*@#!' and numbers ", title="Erorr")
+            return redirect(url_for("signup"))
+   
+   else:   
+        return render_template('signup.html')
+                        
+@app.route('/services')
+def services():
+   
+    return render_template('services.html')
+
+@app.route('/reporttrial')
+def reporttrial():
+        crsr.execute("Select count('Red Light') from [dbo].[violation]")        
+        red=crsr.fetchall()
+        crsr.commit()
+        return render_template('reporttrial.html', data=red)
+
+@app.route('/admin')
+def admin():
+   
+    return render_template('admin.html')
+@app.route('/futurework')
+def future():
+   if "user"in session:
+                return render_template('futurework.html')
+   else:
+       pag.alert(text="Please login in", title="Erorr")
+       return redirect(url_for("login"))
+
+@app.route('/adminsignup',methods=["POST","GET"])
+def adminsignup():
+    if request.method == "POST":
+        try:
+            int (request.form["SSN"])
+        except ValueError:     
+            pag.alert(text="enter your id", title="erorr")
+            return redirect(url_for("adminsignup"))
+        if VALI():
+            pag.alert(text="User added sucessfully", title="Sucess")
+            redirect(url_for("adminsignup"))
+            if request.form["pass"]==request.form["confirmpass"]:
+                userr = request.form["SSN"]
+                passwordd=request.form["pass"]
+                crsr.execute('Select count(person_ssn) from [dbo].[Person] where person_ssn=?',userr)
+                datas=crsr.fetchall()
+                crsr.commit()
+                for row1 in datas:
+                    if int(row1[0])==1:
+                        crsr.execute('Select count(userssn) from [dbo].[Users] where userssn=?',userr)
+                        datas=crsr.fetchall()
+                        crsr.commit()
+                        for row2 in datas:
+                            if int(row2[0])==1 :
+                                return redirect(url_for("adminsignup"))
+                            else:
+                                crsr.execute("INSERT INTO [Users] (userssn,password) VALUES (?,?)",userr,passwordd)
+                                crsr.commit()
+                                return redirect(url_for("adminsignup"))
+                    else:
+                        return redirect(url_for("adminsignup"))
+            else:
+                return redirect(url_for("adminsignup"))
+        else:
+            pag.alert(text="Renter Password Please Your password must contain symboles'_*@#!' and numbers ", title="Erorr")
+            return redirect(url_for("adminsignup"))
+   
+    else:   
+         return render_template('adminsignup.html')
+@app.route('/Reports')
+def Reports():
+   
+   return render_template('Reports.html')
+
+@app.route('/Searchreq',methods=["POST","GET"])
+def Searchreq():
+    if request.method == "POST":
+        querymain="select person_first_name,person_second_name,gender,car_model, car_violation_location , violation_name, car_class  from [dbo].[person] INNER JOIN [dbo].[car] ON[dbo].[car].person_ssn=[dbo].[person].person_ssn INNER JOIN [dbo].[car_violation] on [dbo].[car_violation].car_violation_chassisnumber=[dbo].[car].car_chassisnumber inner join [dbo].[violation] on [dbo].[violation].violation_id = [dbo].[car_violation].violation_ID"
+        #queryrange1="select person_first_name,person_second_name,gender,car_model, car_violation_location , violation_name, car_class  from [dbo].[person] INNER JOIN [dbo].[car] ON[dbo].[car].person_ssn=[dbo].[person].person_ssn INNER JOIN [dbo].[car_violation] on [dbo].[car_violation].car_violation_chassisnumber=[dbo].[car].car_chassisnumber inner join [dbo].[violation] on [dbo].[violation].violation_id = [dbo].[car_violation].violation_ID"
+        Gender=str(request.form["Gender"])
+        Agerange1=str(request.form["Agerange1"])
+        Agerange2=str(request.form["Agerange2"])
+        ttype=str(request.form["type"])
+        loc=str(request.form["loc"])
+        x=0
+    
+        if Gender!="NULL":
+            x=1
+            Gendercondition=" where [dbo].[person].gender='"+Gender+"'"
+            querymain=querymain+Gendercondition
+        if Agerange1 and Agerange2 !="NULL":
+            if x==1:
+                range1condition=" AND [dbo].[person].person_DateOfBirth between '"+Agerange1+"' and '"+Agerange2+"'"
+            else:
+                range1condition=" where [dbo].[person].person_DateOfBirth between '"+Agerange1+"' and '"+Agerange2+"'"
+                x=1
+            querymain=querymain+range1condition
+        if ttype!="NULL":
+            if x==1:
+                ttypecondition=" and [dbo].[violation].violation_name='"+ttype+"'"
+            else:
+                ttypecondition=" where [dbo].[violation].violation_name='"+ttype+"'"
+                x=1
+            querymain=querymain+ttypecondition
+        if loc!="NULL":
+            if x==1:
+                loccondition=" and [dbo].[car_violation].car_violation_location= '"+loc+"'"
+            else:
+                loccondition=" where [dbo].[car_violation].car_violation_location= '"+loc+"'"
+                x=1
+            querymain=querymain+loccondition
+        #querymain=querymain+" where [dbo].[person].person_DateOfBirth between '1960' and '2000' and [dbo].[violation].violation_name='Lane violation' and [dbo].[car_violation].car_violation_location='nozha'"
+        # crsr.execute("select person_first_name,person_second_name,gender,car_model, car_violation_location , violation_name, car_class  from [dbo].[person] INNER JOIN [dbo].[car] ON[dbo].[car].person_ssn=[dbo].[person].person_ssn INNER JOIN [dbo].[car_violation] on [dbo].[car_violation].car_violation_chassisnumber=[dbo].[car].car_chassisnumber inner join [dbo].[violation] on [dbo].[violation].violation_id = [dbo].[car_violation].violation_ID where [dbo].[person].gender=? and [dbo].[person].person_DateOfBirth between ? and ? and [dbo].[violation].violation_name=? and [dbo].[car_violation].car_violation_location=?",Gender,Agerange1,Agerange2,ttype,loc)
+        crsr.execute(querymain)
+
+        datap=crsr.fetchall()
+        crsr.commit()
+        
+     
+        return render_template('Searchreq.html',datar=datap,data=datap)
+    return render_template('Searchreq.html')
+
+@app.route('/Report')
+def Report():
+      crsr.execute("SELECT COUNT([dbo].[car].person_ssn) from [dbo].[car] INNER JOIN [dbo].[car_violation] on [dbo].[car].car_chassisnumber = [dbo].[car_violation].car_violation_chassisnumber AND [dbo].[car].car_enginenumber = [dbo].[car_violation].car_violation_enginenumber,[dbo].[person] where [dbo].[car].person_ssn=[dbo].[person].person_ssn and [dbo].[person].gender='Male'")
+      datap=crsr.fetchall()
+      print(datap[0][0])
+      crsr.commit()
+      crsr.execute("SELECT COUNT([dbo].[car].person_ssn) from [dbo].[car] INNER JOIN [dbo].[car_violation] on [dbo].[car].car_chassisnumber = [dbo].[car_violation].car_violation_chassisnumber AND [dbo].[car].car_enginenumber = [dbo].[car_violation].car_violation_enginenumber,[dbo].[person] where [dbo].[car].person_ssn=[dbo].[person].person_ssn and [dbo].[person].gender='female'")
+      datapp=crsr.fetchall()
+      print(datapp[0][0])
+      crsr.commit()
+      crsr.execute("SELECT car_violation_location, COUNT (car_violation_location) FROM [dbo].[car_violation] GROUP BY car_violation_location")
+      dataloc=crsr.fetchall()
+      print(dataloc[0][0])
+      crsr.commit()
+      crsr.execute("SELECT COUNT (violation_ID) FROM [dbo].[car_violation] where violation_ID = '5'")
+      datavio=crsr.fetchall()
+      print(datavio[0][0])
+      crsr.commit()
+      crsr.execute("SELECT COUNT (violation_ID) FROM [dbo].[car_violation] where violation_ID = '6'")
+      datavio1=crsr.fetchall()
+      print(datavio[0][0])
+      crsr.commit()
+      crsr.execute("SELECT COUNT (violation_ID) FROM [dbo].[car_violation] where violation_ID = '7'")
+      datavio2=crsr.fetchall()
+      print(datavio[0][0])
+      crsr.commit()
+      return render_template('Report.html',data=datap, datas=datapp,datalo=dataloc,datav=datavio,datav1=datavio1,datav2=datavio2)
+# @app.route('/Search',methods=["POST"])
+# def Search():
+#    #if request.method == "POST":
+#      #g ='Male' #request.form["Gender"]
+#     # b= 18 #request.form["Agerange1"]
+#     # b2= 55 #request.form["Agerange2"]
+#     # t= 'Red Light' #request.form["type"]
+#     # l= 'shereton' #request.form["loc"]
+#    #crsr.execute("select count(gender, person_DateOfBith,violation_name,car_violation_location from [dbo].[person] INNER JOIN [dbo].[car_violation] on [dbo].[car].car_chassisnumber = [dbo].[car_violation].car_violation_chassisnumber AND [dbo].[car].car_enginenumber = [dbo].[car_violation].car_violation_enginenumber where [dbo].[person].gender=? and [dbo].[person].person_DateOfBirth=? and [dbo].[car_violation].violation_name=? and [dbo].[car_violation].violation_location=?)",g,b,b2,t,l)
+#    #MOMO=crsr.fetchall()
+#    #print(MOMO[0][0])
+#    #crsr.commit()
+#    #b3=2021-int(b)
+#    #b4=2021-int(b2)
+#    crsr.execute("select gender, person_DateOfBirth,car_violation_location from [dbo].[person] INNER JOIN [dbo].[car] ON[dbo].[car].person_ssn=[dbo].[person].person_ssn INNER JOIN [dbo].[car_violation] on [dbo].[car_violation].car_violation_chassisnumber=[dbo].[car].car_chassisnumber inner join [dbo].[violation] on [dbo].[violation].violation_id = [dbo].[car_violation].car_violation_ID where [dbo].[person].gender='male' and [dbo].[person].person_DateOfBirth between '1999' and '2000' and [dbo].[violation].violation_name='Red Light' and [dbo].[car_violation].car_violation_location='shereton'")
+#    datap=crsr.fetchall()
+#    crsr.commit()
+   
+#    return render_template('Search.html',dataa=datap)
+@app.route('/ViolationReport')
+def ViolationReport():
+      crsr. execute("SELECT count(violation_ID)  FROM [dbo].[car_violation] where violation_ID='5'")
+      dataty=crsr.fetchall()
+      print(dataty[0][0])
+      crsr.commit()
+      crsr. execute("SELECT count(violation_ID)  FROM [dbo].[car_violation] where violation_ID='6'")
+      dataty1=crsr.fetchall()
+      print(dataty1[0][0])
+      crsr.commit()
+      crsr. execute("SELECT count(violation_ID)  FROM [dbo].[car_violation] where violation_ID='7'")
+      dataty2=crsr.fetchall()
+      print(dataty2[0][0])
+      crsr.commit()
+      return render_template('ViolationReport.html',datatyp=dataty,datatyp1=dataty1,datatyp2=dataty2)
+    
+@app.route('/l')
+def y():
+    return render_template('layout.html')
+    
+@app.route('/sign_out') 
+def sign_out():
+    session['logged_in'] = False
+    session.pop('username')
+    return redirect(url_for('home'))
+
+
+
+if __name__=="__main__":
+      app.run(debug=True)
